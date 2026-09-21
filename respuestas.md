@@ -195,7 +195,14 @@ genera más valor que solo el volumen de líneas.
 **Consulta:**
 
 ```sql
-
+SELECT c.company_name AS cliente,
+       c.country AS pais,
+       COUNT(o.order_id) AS num_pedidos,
+       COALESCE(MAX(o.order_date)::text, 'SIN PEDIDOS') AS ultimo_pedido
+FROM customers c
+LEFT JOIN orders o ON c.customer_id = o.customer_id
+GROUP BY c.company_name, c.country
+ORDER BY num_pedidos ASC;
 ```
 
 **Resultado:**
@@ -203,6 +210,11 @@ genera más valor que solo el volumen de líneas.
 ![Resultado pregunta 7](img/p07.png)
 
 **Comentario:**
+Usé LEFT JOIN porque necesitaba que aparecieran todos los clientes, incluidos 
+los que nunca compraron. Si hubiera usado INNER JOIN, esos clientes desaparecerían. 
+COUNT(o.order_id) ignora los nulos que genera el LEFT JOIN para clientes sin 
+pedidos, dándome 0. El COALESCE convierte esos nulos a 'SIN PEDIDOS' como texto 
+para que la fecha tenga formato legible.
 
 ---
 
@@ -213,7 +225,12 @@ genera más valor que solo el volumen de líneas.
 **Consulta:**
 
 ```sql
-
+SELECT e.first_name || ' ' || e.last_name AS empleado,
+       e.title AS cargo,
+       COALESCE(m.first_name || ' ' || m.last_name, 'DIRECCIÓN GENERAL') AS responsable,
+       m.title AS cargo_responsable
+FROM employees e
+LEFT JOIN employees m ON e.reports_to = m.employee_id;
 ```
 
 **Resultado:**
@@ -221,6 +238,11 @@ genera más valor que solo el volumen de líneas.
 ![Resultado pregunta 8](img/p08.png)
 
 **Comentario:**
+Este fue mi primer SELF JOIN real. Los aliases e y m fueron imprescindibles 
+porque sin ellos PostgreSQL no entendería cuál era la tabla padre y cuál la 
+subordinada. El LEFT JOIN garantiza que Andrew Fuller, que no reporta a nadie 
+(reports_to es nulo), aparezca con 'DIRECCIÓN GENERAL'. Probé con INNER JOIN 
+y desaparece, así que eso me confirmó la decisión.
 
 ---
 
@@ -231,7 +253,29 @@ genera más valor que solo el volumen de líneas.
 **Consulta:**
 
 ```sql
-
+WITH anios AS (
+    SELECT 1996 AS anio
+    UNION ALL SELECT 1997
+    UNION ALL SELECT 1998
+),
+ventas_reales AS (
+    SELECT p.category_id,
+           EXTRACT(YEAR FROM o.order_date)::int AS anio,
+           SUM(ROUND((CAST(od.unit_price AS numeric) * od.quantity * (1 - od.discount::numeric)), 2)) AS facturacion
+    FROM orders o
+    INNER JOIN order_details od USING (order_id)
+    INNER JOIN products p USING (product_id)
+    GROUP BY p.category_id, EXTRACT(YEAR FROM o.order_date)::int
+)
+SELECT c.category_name AS categoria,
+       a.anio,
+       COALESCE(v.facturacion, 0) AS facturacion
+FROM categories c
+CROSS JOIN anios a
+LEFT JOIN ventas_reales v 
+    ON c.category_id = v.category_id
+    AND a.anio = v.anio
+ORDER BY c.category_name, a.anio;
 ```
 
 **Resultado:**
@@ -239,6 +283,11 @@ genera más valor que solo el volumen de líneas.
 ![Resultado pregunta 9](img/p09.png)
 
 **Comentario:**
+El patrón CROSS JOIN + LEFT JOIN fue crucial aquí. Primero generé todas las 24 
+combinaciones posibles (esqueleto vacío), luego colgué los datos reales. Si lo 
+hacía al revés (LEFT JOIN primero), nunca vería las categorías sin ventas en 
+ciertos años porque no existirían en los datos. El COALESCE convierte nulos a 0 
+para claridad en reporting.
 
 ---
 
@@ -249,7 +298,25 @@ genera más valor que solo el volumen de líneas.
 **Consulta:**
 
 ```sql
-
+SELECT COALESCE(c.country, s.country) AS pais,
+       COALESCE(c.num_clientes, 0) AS num_clientes,
+       COALESCE(s.num_proveedores, 0) AS num_proveedores,
+       CASE
+           WHEN c.country IS NOT NULL AND s.country IS NOT NULL THEN 'AMBOS'
+           WHEN c.country IS NOT NULL THEN 'SOLO CLIENTES'
+           ELSE 'SOLO PROVEEDORES'
+       END AS tipo_presencia
+FROM (
+    SELECT country, COUNT(customer_id) AS num_clientes
+    FROM customers
+    GROUP BY country
+) c
+FULL JOIN (
+    SELECT country, COUNT(supplier_id) AS num_proveedores
+    FROM suppliers
+    GROUP BY country
+) s ON c.country = s.country
+ORDER BY pais;
 ```
 
 **Resultado:**
@@ -257,6 +324,12 @@ genera más valor que solo el volumen de líneas.
 ![Resultado pregunta 10](img/p10.png)
 
 **Comentario:**
+El FULL JOIN fue fundamental porque no podía perder ningún país, fuera solo con 
+clientes o solo con proveedores. Si hubiera usado INNER JOIN, desaparecían los 
+que solo tenían uno. El COALESCE en la unión asegura que si un país estaba en 
+ambas tablas, tomo su nombre de la que tuviera valor (no nulo). La lógica CASE 
+WHEN es sencilla: si ambos counts son mayores a 0, es AMBOS; si uno es nulo, 
+tomo el otro.
 
 ---
 
