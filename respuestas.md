@@ -98,7 +98,16 @@ tabla, así que no necesitaba COALESCE().
 **Consulta:**
 
 ```sql
-
+SELECT p.product_name AS producto,
+       c.category_name AS categoria,
+       s.company_name AS proveedor,
+       s.country AS pais,
+       s.city AS ciudad
+FROM products p
+INNER JOIN categories c ON p.category_id = c.category_id
+INNER JOIN suppliers s ON p.supplier_id = s.supplier_id
+WHERE s.country IN ('Italy', 'France', 'Spain')
+ORDER BY s.country, p.product_name;
 ```
 
 **Resultado:**
@@ -106,6 +115,10 @@ tabla, así que no necesitaba COALESCE().
 ![Resultado pregunta 4](img/p04.png)
 
 **Comentario:**
+He utilizado INNER JOIN en lugar de LEFT JOIN porque el enunciado especificaba 
+solo productos con proveedores de esos tres países, así que los productos sin 
+proveedor en esos países no debían aparecer. Los alias fueron imprescindibles 
+para distinguir las columnas de productos y categorías.
 
 ---
 
@@ -116,7 +129,18 @@ tabla, así que no necesitaba COALESCE().
 **Consulta:**
 
 ```sql
-
+SELECT c.company_name AS cliente,
+       o.order_date AS fecha_pedido,
+       p.product_name AS producto,
+       od.unit_price AS precio_unitario,
+       od.quantity AS cantidad,
+       od.discount AS descuento,
+       ROUND((CAST(od.unit_price AS numeric) * od.quantity * (1 - od.discount::numeric)), 2) AS importe_linea
+FROM orders o
+INNER JOIN customers c USING (customer_id)
+INNER JOIN order_details od USING (order_id)
+INNER JOIN products p USING (product_id)
+WHERE o.order_id = 10248;
 ```
 
 **Resultado:**
@@ -124,6 +148,10 @@ tabla, así que no necesitaba COALESCE().
 ![Resultado pregunta 5](img/p05.png)
 
 **Comentario:**
+Preferí USING(order_id) frente a ON porque ambas tablas compartían exactamente 
+ese nombre de columna, evitando que aparezca duplicada en el resultado. El cálculo 
+de importe_linea requería tres operaciones: precio * cantidad * (1 - descuento), 
+y lo aseguré con CAST a numeric para evitar redondeados no deseados.
 
 ---
 
@@ -134,7 +162,16 @@ tabla, así que no necesitaba COALESCE().
 **Consulta:**
 
 ```sql
-
+SELECT c.category_name AS categoria,
+       COUNT(od.product_id) AS num_lineas,
+       COUNT(DISTINCT od.product_id) AS num_productos,
+       SUM(ROUND((CAST(od.unit_price AS numeric) * od.quantity * (1 - od.discount::numeric)), 2)) AS facturacion
+FROM categories c
+INNER JOIN products p USING (category_id)
+INNER JOIN order_details od USING (product_id)
+GROUP BY c.category_name
+HAVING SUM(ROUND((CAST(od.unit_price AS numeric) * od.quantity * (1 - od.discount::numeric)), 2)) > 100000
+ORDER BY facturacion DESC;
 ```
 
 **Resultado:**
@@ -142,6 +179,10 @@ tabla, así que no necesitaba COALESCE().
 ![Resultado pregunta 6](img/p06.png)
 
 **Comentario:**
+La clave fue usar HAVING en lugar de WHERE porque la condición se aplicaba sobre 
+el resultado de la agregación (SUM), no sobre datos individuales. Sumé COUNT(DISTINCT 
+product_id) para detectar cuántos productos distintos tuvo cada familia, lo que 
+genera más valor que solo el volumen de líneas.
 
 ---
 
