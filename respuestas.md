@@ -659,7 +659,35 @@ Incluye además una columna con la posición global del producto en el conjunto 
 **Consulta:**
 
 ```sql
-
+WITH ventas_producto AS (
+    SELECT p.product_id,
+           p.product_name,
+           c.category_name,
+           SUM(od.quantity) AS unidades,
+           SUM(ROUND((CAST(od.unit_price AS numeric) * od.quantity * (1 - od.discount::numeric)), 2)) AS facturacion
+    FROM products p
+    INNER JOIN categories c ON p.category_id = c.category_id
+    INNER JOIN order_details od ON od.product_id = p.product_id
+    GROUP BY p.product_id, p.product_name, c.category_name
+),
+ranking AS (
+    SELECT category_name,
+           product_name,
+           unidades,
+           facturacion,
+           RANK() OVER (PARTITION BY category_name ORDER BY facturacion DESC) AS posicion_en_categoria,
+           RANK() OVER (ORDER BY facturacion DESC) AS posicion_global
+    FROM ventas_producto
+)
+SELECT category_name AS categoria,
+       posicion_en_categoria,
+       product_name AS producto,
+       unidades,
+       facturacion,
+       posicion_global
+FROM ranking
+WHERE posicion_en_categoria <= 3
+ORDER BY category_name, posicion_en_categoria;
 ```
 
 **Resultado:**
@@ -667,6 +695,11 @@ Incluye además una columna con la posición global del producto en el conjunto 
 ![Resultado pregunta 18](img/p18.png)
 
 **Comentario:**
+No pude filtrar directamente en el WHERE porque las funciones de ventana se evalúan 
+DESPUÉS del WHERE. Por eso usé una CTE para calcular los rankings, luego filtré 
+posicion_en_categoria <= 3. Elegí RANK() porque si dos productos empataban en 
+facturación, ambos ocuparían la posición 1, 2 (saltando a 3). Eso es útil para 
+ver empates.
 
 ---
 
@@ -683,7 +716,23 @@ Incluye además una columna con la posición global del producto en el conjunto 
 **Consulta:**
 
 ```sql
-
+WITH facturacion_mensual AS (
+    SELECT DATE_TRUNC('month', o.order_date) AS mes,
+           SUM(ROUND((CAST(od.unit_price AS numeric) * od.quantity * (1 - od.discount::numeric)), 2)) AS facturacion
+    FROM orders o
+    INNER JOIN order_details od ON od.order_id = od.order_id
+    WHERE o.order_date >= '1997-01-01' AND o.order_date < '1998-01-01'
+    GROUP BY DATE_TRUNC('month', o.order_date)
+)
+SELECT mes,
+       facturacion,
+       SUM(facturacion) OVER (ORDER BY mes) AS acumulado,
+       ROUND(AVG(facturacion) OVER (ORDER BY mes ROWS BETWEEN 2 PRECEDING AND CURRENT ROW), 2) AS media_movil_3m,
+       LAG(facturacion) OVER (ORDER BY mes) AS mes_anterior,
+       ROUND(100.0 * (facturacion - LAG(facturacion) OVER (ORDER BY mes))
+       / LAG(facturacion) OVER (ORDER BY mes), 2) AS variacion_pct
+FROM facturacion_mensual
+ORDER BY mes;
 ```
 
 **Resultado:**
@@ -691,6 +740,11 @@ Incluye además una columna con la posición global del producto en el conjunto 
 ![Resultado pregunta 19](img/p19.png)
 
 **Comentario:**
+El acumulado se calculó con SUM() sin marco (por defecto RANGE UNBOUNDED PRECEDING), 
+que suma desde el inicio hasta la fila actual. La media móvil necesitó un marco 
+explícito: ROWS BETWEEN 2 PRECEDING para incluir el mes actual y los dos anteriores. 
+LAG() trae el valor del mes anterior; en enero devuelve nulo, por eso aparece [null]. 
+La variación se calcula como (mes_actual - mes_anterior) / mes_anterior * 100.
 
 ---
 
@@ -703,7 +757,30 @@ Incluye además una columna que indique el peso de cada categoría sobre la fact
 **Consulta:**
 
 ```sql
-
+WITH facturacion_categoria_anio AS (
+    SELECT c.category_name,
+           EXTRACT(YEAR FROM o.order_date)::int AS anio,
+           (CAST(od.unit_price AS numeric) * od.quantity * (1 - od.discount::numeric)) AS importe
+    FROM categories c
+    INNER JOIN products p ON p.category_id = c.category_id
+    INNER JOIN order_details od ON od.product_id = p.product_id
+    INNER JOIN orders o ON o.order_id = od.order_id
+)
+SELECT COALESCE(category_name, 'TOTAL GENERAL') AS categoria,
+       ROUND(SUM(importe) FILTER (WHERE anio = 1996), 2) AS f_1996,
+       ROUND(SUM(importe) FILTER (WHERE anio = 1997), 2) AS f_1997,
+       ROUND(SUM(importe) FILTER (WHERE anio = 1998), 2) AS f_1998,
+       ROUND(SUM(importe), 2) AS total,
+       ROUND(100.0 * SUM(importe) / (SUM(SUM(importe)) OVER ()), 2) AS peso_pct,
+       CASE
+           WHEN category_name IS NULL THEN '-'
+           WHEN SUM(importe) FILTER (WHERE anio = 1998) > SUM(importe) FILTER (WHERE anio = 1997) THEN 'CRECIÓ'
+           WHEN SUM(importe) FILTER (WHERE anio = 1998) < SUM(importe) FILTER (WHERE anio = 1997) THEN 'DECRECIÓ'
+           ELSE 'IGUAL'
+       END AS tendencia
+FROM facturacion_categoria_anio
+GROUP BY ROLLUP(category_name)
+ORDER BY category_name NULLS LAST;
 ```
 
 **Resultado:**
@@ -711,5 +788,10 @@ Incluye además una columna que indique el peso de cada categoría sobre la fact
 ![Resultado pregunta 20](img/p20.png)
 
 **Comentario:**
+Usé FILTER (WHERE anio = ...) dentro de SUM() en lugar de CASE WHEN porque es 
+más legible y específico de PostgreSQL. El ROLLUP agregó automáticamente al final 
+la fila de totales, evitando UNION. El comentario sobre las fechas fue crucial: 
+la tendencia 'DECRECIO' en el total engaña porque 1997 tuvo 12 meses completos 
+pero 1998 solo 5 meses; una comparación justa requeriría normalizar por días.
 
 ---
