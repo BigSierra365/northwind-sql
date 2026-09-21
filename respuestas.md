@@ -9,7 +9,12 @@
 **Consulta:** 
 
 ```sql
-
+SELECT product_name AS producto,
+       ROUND(CAST(unit_price AS DECIMAL(10,2)), 2) AS precio
+FROM products
+WHERE discontinued = 0
+  AND unit_price BETWEEN 10 AND 50
+ORDER BY precio DESC;
 ```
 
 **Resultado:**
@@ -31,7 +36,13 @@ a menor precio como se pedía.
 **Consulta:**
 
 ```sql
-
+SELECT c.country AS pais,
+       COUNT(c.customer_id) AS num_clientes,
+       COUNT(DISTINCT c.city) AS num_ciudades
+FROM customers c
+GROUP BY c.country
+HAVING COUNT(c.customer_id) >= 5
+ORDER BY num_clientes DESC;
 ```
 
 **Resultado:**
@@ -39,6 +50,10 @@ a menor precio como se pedía.
 ![Resultado pregunta 2](img/p02.png)
 
 **Comentario:**
+Elegí usar CASE WHEN porque tenía que evaluar dos condiciones: si el stock era 
+exactamente 0 para marcar como CRÍTICO, o cualquier otro valor menor/igual al 
+nivel de reposición como AVISO. La columna units_in_stock nunca es nula en esta 
+tabla, así que no necesitaba COALESCE().
 
 ---
 
@@ -49,7 +64,17 @@ a menor precio como se pedía.
 **Consulta:**
 
 ```sql
-
+SELECT product_name AS producto,
+       units_in_stock AS stock,
+       reorder_level AS nivel_reposicion,
+       units_on_order AS pedido_a_proveedor,
+       CASE
+           WHEN units_in_stock = 0 THEN 'CRÍTICO'
+           ELSE 'AVISO'
+       END AS situacion
+FROM products
+WHERE discontinued = 0
+  AND units_in_stock <= reorder_level;
 ```
 
 **Resultado:**
@@ -57,6 +82,10 @@ a menor precio como se pedía.
 ![Resultado pregunta 3](img/p03.png)
 
 **Comentario:**
+Elegí usar CASE WHEN porque tenía que evaluar dos condiciones: si el stock era 
+exactamente 0 para marcar como CRÍTICO, o cualquier otro valor menor/igual al 
+nivel de reposición como AVISO. La columna units_in_stock nunca es nula en esta 
+tabla, así que no necesitaba COALESCE().
 
 ---
 
