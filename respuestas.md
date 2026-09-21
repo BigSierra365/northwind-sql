@@ -342,7 +342,32 @@ tomo el otro.
 **Consulta:**
 
 ```sql
-
+SELECT 'CLIENTE' AS origen,
+       UPPER(contact_name) AS contacto,
+       company_name AS organizacion,
+       city AS ciudad,
+       country AS pais
+FROM customers
+ 
+UNION ALL
+ 
+SELECT 'PROVEEDOR' AS origen,
+       UPPER(contact_name) AS contacto,
+       company_name AS organizacion,
+       city AS ciudad,
+       country AS pais
+FROM suppliers
+ 
+UNION ALL
+ 
+SELECT 'EMPLEADO' AS origen,
+       UPPER(first_name || ' ' || last_name) AS contacto,
+       'NORTHWIND TRADERS' AS organizacion,
+       city AS ciudad,
+       country AS pais
+FROM employees
+ 
+ORDER BY origen, pais;
 ```
 
 **Resultado:**
@@ -350,7 +375,12 @@ tomo el otro.
 ![Resultado pregunta 11](img/p11.png)
 
 **Comentario:**
-
+Decidí UNION ALL en lugar de UNION porque no esperaba duplicados exactos 
+(origen + contacto + organización + ciudad + país) entre clientes, proveedores 
+y empleados, y UNION ALL es más eficiente al evitar la búsqueda de duplicados. 
+El UPPER() fue obligatorio para standarizar nombres. Para empleados, tuve que 
+concatenar nombre y apellidos porque la tabla no tiene una columna "contact_name" 
+como en clientes y proveedores.
 ---
 
 ## Pregunta 12 — Mercados con desequilibrio
@@ -364,7 +394,13 @@ Ordena ambos resultados alfabéticamente.
 **Consulta (a) — Países solo con clientes:**
 
 ```sql
-
+-- a) Países donde hay clientes pero ningún proveedor
+SELECT country AS pais
+FROM customers
+EXCEPT
+SELECT country
+FROM suppliers
+ORDER BY pais;
 ```
 
 **Resultado:**
@@ -374,7 +410,13 @@ Ordena ambos resultados alfabéticamente.
 **Consulta (b) — Países con clientes y proveedores:**
 
 ```sql
-
+-- b) Países donde hay a la vez clientes y proveedores
+SELECT country AS pais
+FROM customers
+INTERSECT
+SELECT country
+FROM suppliers
+ORDER BY pais;
 ```
 
 **Resultado:**
@@ -382,12 +424,14 @@ Ordena ambos resultados alfabéticamente.
 ![Resultado pregunta 12b](img/p12b.png)
 
 **Comentario:**
+Elegí EXCEPT e INTERSECT porque son operadores de conjunto más limpios que escribir 
+subconsultas con NOT IN o LEFT JOIN. EXCEPT devuelve países en customers pero no 
+en suppliers. INTERSECT devuelve solo los que aparecen en ambas tablas. Estos 
+operadores eliminan duplicados automáticamente, lo que ayuda a evitar distorsiones.
 
 ---
 
 ## Sección 5. Subconsultas
-
----
 
 ## Pregunta 13 — Clientes que nunca han comprado pescado
 
