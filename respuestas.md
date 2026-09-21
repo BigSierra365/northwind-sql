@@ -761,7 +761,7 @@ Incluye además una columna que indique el peso de cada categoría sobre la fact
 WITH facturacion_categoria_anio AS (
     SELECT c.category_name,
            EXTRACT(YEAR FROM o.order_date)::int AS anio,
-           (CAST(od.unit_price AS numeric) * od.quantity * (1 - od.discount::numeric)) AS importe
+           (od.unit_price AS numeric) * od.quantity * (1 - od.discount::numeric)) AS importe
     FROM categories c
     INNER JOIN products p ON p.category_id = c.category_id
     INNER JOIN order_details od ON od.product_id = p.product_id
