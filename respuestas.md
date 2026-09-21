@@ -424,7 +424,7 @@ ORDER BY pais;
 
 ![Resultado pregunta 12b](img/p12_2.png)
 
-**Comentario:**
+**Comentario:**  
 Elegí EXCEPT e INTERSECT porque son operadores de conjunto más limpios que escribir 
 subconsultas con NOT IN o LEFT JOIN. EXCEPT devuelve países en customers pero no 
 en suppliers. INTERSECT devuelve solo los que aparecen en ambas tablas. Estos 
@@ -554,7 +554,22 @@ Resuélvelo con una subconsulta correlacionada: para cada producto, comprueba si
 **Consulta:**
 
 ```sql
-
+SELECT c.category_name AS categoria,
+       p.product_name AS producto,
+       ROUND(p.unit_price::numeric, 2) AS precio,
+       ROUND((
+           SELECT AVG(p2.unit_price::numeric)
+           FROM products p2
+           WHERE p2.category_id = p.category_id
+       ), 2) AS precio_medio_categoria
+FROM products p
+INNER JOIN categories c ON p.category_id = c.category_id
+WHERE p.unit_price = (
+    SELECT MAX(p3.unit_price)
+    FROM products p3
+    WHERE p3.category_id = p.category_id
+)
+ORDER BY categoria;
 ```
 
 **Resultado:**
@@ -562,6 +577,11 @@ Resuélvelo con una subconsulta correlacionada: para cada producto, comprueba si
 ![Resultado pregunta 16](img/p16.png)
 
 **Comentario:**
+Usé subconsultas correlacionadas porque necesitaba comparar cada producto contra 
+el máximo de su propia categoría, no un máximo global. La subconsulta en WHERE 
+verifica si el precio actual es el máximo de su categoría. La subconsulta en SELECT 
+calcula la media de su familia en paralelo. Esto es costoso (se ejecuta para cada fila), 
+pero el resultado es preciso y legible.
 
 ---
 
@@ -577,9 +597,119 @@ Resuélvelo con una subconsulta correlacionada: para cada producto, comprueba si
 **Consulta:**
 
 ```sql
+WITH facturacion_cliente AS (
+    SELECT c.customer_id,
+           c.company_name,
+           SUM(ROUND((CAST(od.unit_price AS numeric) * od.quantity * (1 - od.discount::numeric)), 2)) AS facturacion
+    FROM customers c
+    INNER JOIN orders o ON o.customer_id = c.customer_id
+    INNER JOIN order_details od ON od.order_id = o.order_id
+    GROUP BY c.customer_id, c.company_name
+),
+clientes_segmentados AS (
+    SELECT customer_id,
+           company_name,
+           facturacion,
+           NTILE(4) OVER (ORDER BY facturacion DESC) AS cuartil
+    FROM facturacion_cliente
+),
+clientes_etiquetados AS (
+    SELECT customer_id,
+           company_name,
+           facturacion,
+           CASE cuartil
+               WHEN 1 THEN 'A - Estratégico'
+               WHEN 2 THEN 'B - Consolidado'
+               WHEN 3 THEN 'C - Ocasional'
+               WHEN 4 THEN 'D - Marginal'
+           END AS segmento
+    FROM clientes_segmentados
+)
+SELECT segmento,
+       COUNT(*) AS num_clientes,
+       ROUND(SUM(facturacion), 2) AS facturacion_segmento,
+       ROUND(100.0 * SUM(facturacion) / (SUM(SUM(facturacion)) OVER ()), 2) AS porcentaje_sobre_total
+FROM clientes_etiquetados
+GROUP BY segmento
+ORDER BY segmento;
+```
+
+**Resultado:**
+
+![Resultado pregunta 17](img/p17.png)
+
+**Comentario:**
+Encadené tres CTE para hacer la consulta legible "de arriba abajo". Primero calculé 
+la facturación por cliente, luego usé NTILE(4) para dividir en cuartiles ordenados 
+por facturación descendente (el 1er cuartil son los mayores), y finalmente asigné 
+etiquetas ABCD. La función de ventana SUM() OVER () sin PARTITION BY calcula el 
+total global para el porcentaje. Una sola CTE habría funcionado pero hubiera sido 
+ilegible.
+
+---
+
+## Sección 7. Funciones de ventana
+
+## Pregunta 18 — Los tres productos más vendidos de cada categoría
+
+**Enunciado:** Para cada categoría, obtén los tres productos con mayor facturación. Muestra la categoría, la posición dentro de la categoría, el nombre del producto, las unidades vendidas y la facturación.
+
+Incluye además una columna con la posición global del producto en el conjunto de la compañía, para que se vea qué productos son líderes de su nicho pero irrelevantes en el total.
+
+**Consulta:**
+
+```sql
 
 ```
 
 **Resultado:**
 
-![Resultado pregunta
+![Resultado pregunta 18](img/p18.png)
+
+**Comentario:**
+
+---
+
+## Pregunta 19 — Evolución mensual con acumulado y media móvil
+
+**Enunciado:** Para cada mes de 1997, calcula:
+
+- La facturación del mes.
+- El total acumulado desde enero.
+- La media móvil de los tres últimos meses (el mes actual y los dos anteriores).
+- La facturación del mes anterior.
+- La variación porcentual respecto al mes anterior.
+
+**Consulta:**
+
+```sql
+
+```
+
+**Resultado:**
+
+![Resultado pregunta 19](img/p19.png)
+
+**Comentario:**
+
+---
+
+## Pregunta 20 — Cuadro de mando anual por categoría
+
+**Enunciado:** Construye una tabla donde cada fila sea una categoría y las columnas muestren la facturación de 1996, 1997 y 1998 en columnas separadas, más el total de los tres años. Añade al final una fila de totales generales.
+
+Incluye además una columna que indique el peso de cada categoría sobre la facturación total de la compañía, y otra que muestre si la categoría creció o decreció entre 1997 y 1998.
+
+**Consulta:**
+
+```sql
+
+```
+
+**Resultado:**
+
+![Resultado pregunta 20](img/p20.png)
+
+**Comentario:**
+
+---
