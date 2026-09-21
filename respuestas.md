@@ -50,10 +50,11 @@ ORDER BY num_clientes DESC;
 ![Resultado pregunta 2](img/p02.png)
 
 **Comentario:**
-Elegí usar CASE WHEN porque tenía que evaluar dos condiciones: si el stock era 
-exactamente 0 para marcar como CRÍTICO, o cualquier otro valor menor/igual al 
-nivel de reposición como AVISO. La columna units_in_stock nunca es nula en esta 
-tabla, así que no necesitaba COALESCE().
+Usé HAVING en lugar de WHERE porque la condición de filtrado se aplicaba sobre 
+el resultado de COUNT(), no sobre datos individuales. El COUNT(DISTINCT c.city) 
+fue clave para no contar ciudades duplicadas; si hubiera usado COUNT(c.city) sin 
+DISTINCT, el resultado sería incorrecto si un país tiene varios clientes en la 
+misma ciudad.
 
 ---
 
