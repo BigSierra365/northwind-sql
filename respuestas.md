@@ -381,6 +381,7 @@ y empleados, y UNION ALL es más eficiente al evitar la búsqueda de duplicados.
 El UPPER() fue obligatorio para standarizar nombres. Para empleados, tuve que 
 concatenar nombre y apellidos porque la tabla no tiene una columna "contact_name" 
 como en clientes y proveedores.
+
 ---
 
 ## Pregunta 12 — Mercados con desequilibrio
@@ -405,7 +406,7 @@ ORDER BY pais;
 
 **Resultado:**
 
-![Resultado pregunta 12a](img/p12a.png)
+![Resultado pregunta 12a](img/p12_1.png)
 
 **Consulta (b) — Países con clientes y proveedores:**
 
@@ -421,7 +422,7 @@ ORDER BY pais;
 
 **Resultado:**
 
-![Resultado pregunta 12b](img/p12b.png)
+![Resultado pregunta 12b](img/p12_2.png)
 
 **Comentario:**
 Elegí EXCEPT e INTERSECT porque son operadores de conjunto más limpios que escribir 
@@ -440,14 +441,34 @@ operadores eliminan duplicados automáticamente, lo que ayuda a evitar distorsio
 **Consulta:**
 
 ```sql
-
+SELECT c.company_name AS cliente,
+       c.country AS pais,
+       COUNT(o.order_id) AS pedidos_realizados
+FROM customers c
+LEFT JOIN orders o ON c.customer_id = o.customer_id
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM orders o2
+    INNER JOIN order_details od ON o2.order_id = od.order_id
+    INNER JOIN products p ON od.product_id = p.product_id
+    INNER JOIN categories cat ON p.category_id = cat.category_id
+    WHERE o2.customer_id = c.customer_id
+    AND cat.category_name = 'Seafood'
+)
+GROUP BY c.company_name, c.country
+ORDER BY pedidos_realizados DESC;
 ```
 
 **Resultado:**
 
 ![Resultado pregunta 13](img/p13.png)
 
-**Comentario:**
+**Comentario:**+
+Usé NOT EXISTS porque es más eficiente que NOT IN cuando la subconsulta puede 
+devolver nulos (aunque aquí no, es una buena práctica). La subconsulta correlacionada 
+verifica si el cliente actual tiene algún pedido con productos Seafood; si existe, 
+se excluye. El LEFT JOIN inicial puede parecer redundante, pero asegura que todos 
+los clientes aparezcan aunque tengan 0 pedidos totales.
 
 ---
 
@@ -458,7 +479,14 @@ operadores eliminan duplicados automáticamente, lo que ayuda a evitar distorsio
 **Consulta:**
 
 ```sql
-
+SELECT product_name AS producto,
+       ROUND(unit_price::numeric, 2) AS precio,
+       ROUND((SELECT AVG(unit_price::numeric) FROM products), 2) AS precio_medio_catalogo,
+       ROUND((unit_price::numeric) - (SELECT AVG(unit_price::numeric) FROM products), 2) AS diferencia
+FROM products
+WHERE discontinued = 0
+  AND unit_price > (SELECT AVG(unit_price::numeric) FROM products)
+ORDER BY diferencia DESC;
 ```
 
 **Resultado:**
@@ -466,6 +494,11 @@ operadores eliminan duplicados automáticamente, lo que ayuda a evitar distorsio
 ![Resultado pregunta 14](img/p14.png)
 
 **Comentario:**
+Decidí escribir la subconsulta escalar dos veces en lugar de usar una CTE porque 
+el enunciado pedía explícitamente que aparecieran "en cada fila" tanto el precio 
+medio como la diferencia. Aunque repetir la subconsulta es menos elegante, es lo 
+que se pedía. Un CAST a numeric fue obligatorio para evitar que redondeamientos 
+enteros distorsionaran la comparación.
 
 ---
 
@@ -478,7 +511,23 @@ El cálculo tiene dos niveles: primero obtén el importe de cada pedido sumando 
 **Consulta:**
 
 ```sql
-
+SELECT c.company_name AS cliente,
+       c.country AS pais,
+       COUNT(op.order_id) AS num_pedidos,
+       ROUND(SUM(op.importe_pedido), 2) AS importe_total,
+       ROUND(AVG(op.importe_pedido), 2) AS ticket_medio
+FROM customers c
+INNER JOIN (
+    SELECT o.order_id,
+           o.customer_id,
+           SUM(ROUND((CAST(od.unit_price AS numeric) * od.quantity * (1 - od.discount::numeric)), 2)) AS importe_pedido
+    FROM orders o
+    INNER JOIN order_details od USING (order_id)
+    GROUP BY o.order_id, o.customer_id
+) op ON c.customer_id = op.customer_id
+GROUP BY c.customer_id, c.company_name, c.country
+ORDER BY ticket_medio DESC
+LIMIT 15;
 ```
 
 **Resultado:**
@@ -486,12 +535,15 @@ El cálculo tiene dos niveles: primero obtén el importe de cada pedido sumando 
 ![Resultado pregunta 15](img/p15.png)
 
 **Comentario:**
+La clave fue separar los niveles de agregación: primero calculé el importe de cada 
+pedido sumando sus líneas, luego promedié esos importes por cliente. Si hubiera 
+promediado directamente las líneas, habría obtenido un ticket medio incorrecto porque 
+los pedidos con más líneas habrían tenido más peso. El alias "op" (orden-pedido) 
+ayudó a leer la lógica.
 
 ---
 
 ## Sección 6. Subconsultas correlacionadas y CTE
-
----
 
 ## Pregunta 16 — El producto más caro de cada categoría
 
